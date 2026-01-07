@@ -1,0 +1,566 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>모바일 포트레이트 테트리스</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0f1320" />
+  <style>
+    :root {
+      --bg: #0f1320;
+      --panel: #171c2f;
+      --text: #e6e8f0;
+      --accent: #6ea8fe;
+      --grid: #1e2540;
+      --btn: #121733;
+      --btn-border: #3b4580;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: radial-gradient(1200px 600px at 20% 20%, #0f1320 30%, #0a0d18 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding-bottom: env(safe-area-inset-bottom);
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .mobile-wrap {
+      width: 100%;
+      max-width: 540px; /* 세로형에서 중앙 정렬 */
+      margin: 0 auto;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      padding: 12px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #2a3256;
+      border-radius: 16px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    header.hud .row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      font-size: 13px;
+    }
+    header.hud .stat {
+      background: #121733;
+      border: 1px solid #29305a;
+      border-radius: 10px;
+      padding: 8px;
+      text-align: center;
+    }
+    header.hud .mini {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 12px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    header.hud h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #c9d1ff;
+    }
+    .next-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    canvas#board {
+      width: 100%;
+      height: 100%;
+      border: 2px solid #2a3256;
+      border-radius: 16px;
+      background: linear-gradient(#0b1026, #0b0f22);
+      box-shadow: 0 10px 30px rgba(0,0,0,.5);
+      display: block;
+    }
+    .board-wrap {
+      /* 화면에 맞춰 자동으로 키우되, 헤더/푸터를 고려한 높이를 가짐 */
+      min-height: 360px;
+      height: 100%;
+      display: grid;
+    }
+    footer.controls .row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 6px;
+    }
+    footer.controls button {
+      cursor: pointer;
+      border: 1px solid var(--btn-border);
+      background: var(--btn);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 12px 10px;
+      font-size: 16px;
+      font-weight: 600;
+      box-shadow: 0 6px 12px rgba(0,0,0,.25);
+    }
+    footer.controls button:active { transform: translateY(1px); }
+    footer.controls .row .wide { grid-column: span 2; }
+    .hint {
+      text-align: center;
+      font-size: 12px;
+      color: #96a2ff;
+      opacity: .85;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="mobile-wrap">
+    <!-- 상단 HUD -->
+    <header class="hud panel">
+      <div class="row">
+        <div class="stat"><div>점수</div><b id="score">0</b></div>
+        <div class="stat"><div>레벨</div><b id="level">1</b></div>
+        <div class="stat"><div>라인</div><b id="lines">0</b></div>
+        <div class="stat"><div>속도(ms)</div><b id="speed">1000</b></div>
+      </div>
+      <div class="mini">
+        <div>
+          <h2>홀드</h2>
+          <canvas id="hold"></canvas>
+        </div>
+        <div>
+          <h2>다음 미노</h2>
+          <div class="next-list" id="nextList">
+            <!-- 3개 프리뷰 캔버스 동적 생성 -->
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 중앙 보드 (세로형 비중 높게) -->
+    <main class="board-wrap panel">
+      <canvas id="board"></canvas>
+    </main>
+
+    <!-- 하단 터치 컨트롤 -->
+    <footer class="controls panel">
+      <div class="row">
+        <button id="btn-left">←</button>
+        <button id="btn-right">→</button>
+        <button id="btn-rot-l">⟲</button>
+        <button id="btn-rot-r">⟳</button>
+      </div>
+      <div class="row">
+        <button id="btn-soft" class="wide">↓ 소프트</button>
+        <button id="btn-hard" class="wide">⤓ 하드</button>
+      </div>
+      <div class="row">
+        <button id="btn-hold">HOLD</button>
+        <button id="btn-pause">PAUSE</button>
+        <button id="btn-restart" class="wide">RESTART</button>
+      </div>
+      <div class="hint">세로형 터치 UI · 이중탭 줌 방지 · 레티나 캔버스 스케일</div>
+    </footer>
+  </div>
+
+  <script>
+    // ====== 게임 상수 ======
+    const COLS = 10;
+    const ROWS = 20;
+    let BLOCK = 24;        // 동적 리사이즈에서 갱신됨
+    let BOARD_W = COLS * BLOCK;
+    let BOARD_H = ROWS * BLOCK;
+
+    const TETROMINOES = {
+      I: { color: '#6de3ff', matrix: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
+      O: { color: '#ffd86d', matrix: [[0,1,1,0],[0,1,1,0],[0,0,0,0],[0,0,0,0]] },
+      T: { color: '#b884ff', matrix: [[0,1,0,0],[1,1,1,0],[0,0,0,0],[0,0,0,0]] },
+      S: { color: '#7cff85', matrix: [[0,1,1,0],[1,1,0,0],[0,0,0,0],[0,0,0,0]] },
+      Z: { color: '#ff7c87', matrix: [[1,1,0,0],[0,1,1,0],[0,0,0,0],[0,0,0,0]] },
+      J: { color: '#6d8bff', matrix: [[1,0,0,0],[1,1,1,0],[0,0,0,0],[0,0,0,0]] },
+      L: { color: '#ffb36d', matrix: [[0,0,1,0],[1,1,1,0],[0,0,0,0],[0,0,0,0]] }
+    };
+
+    // ====== 캔버스/DOM ======
+    const boardCanvas = document.getElementById('board');
+    const holdCanvas = document.getElementById('hold');
+    const nextList = document.getElementById('nextList');
+    const previewCanvases = [];
+    for (let i = 0; i < 3; i++) {
+      const c = document.createElement('canvas');
+      nextList.appendChild(c);
+      previewCanvases.push(c);
+    }
+
+    const scoreEl = document.getElementById('score');
+    const levelEl = document.getElementById('level');
+    const linesEl = document.getElementById('lines');
+    const speedEl = document.getElementById('speed');
+
+    // ====== 상태 변수 ======
+    let board = createMatrix(ROWS, COLS, null);
+    let queue = [];
+    let current = null;
+    let holdPiece = null;
+    let holdUsed = false;
+    let score = 0;
+    let level = 1;
+    let lines = 0;
+    let dropInterval = 1000;
+    let dropAccumulator = 0;
+    let paused = false;
+    let gameOver = false;
+
+    // ====== 캔버스 고해상도 스케일 유틸 ======
+    function sizeCanvas(canvas, cssW, cssH) {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.style.width = cssW + 'px';
+      canvas.style.height = cssH + 'px';
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return ctx;
+    }
+
+    let bctx = boardCanvas.getContext('2d');
+    let hctx = holdCanvas.getContext('2d');
+
+    // ====== 레이아웃/리사이즈 ======
+    function layout() {
+      // 보드 영역의 가용 크기를 계산
+      const wrap = document.querySelector('.board-wrap');
+      const rect = wrap.getBoundingClientRect();
+      const cw = Math.floor(rect.width - 6); // 패딩 고려
+      const ch = Math.floor(rect.height - 6);
+
+      // 블록 크기: 가로/세로 모두 보드가 딱 맞도록
+      BLOCK = Math.max(14, Math.min(Math.floor(cw / COLS), Math.floor(ch / ROWS)));
+      BOARD_W = COLS * BLOCK;
+      BOARD_H = ROWS * BLOCK;
+
+      // 캔버스 리사이즈(레티나 대응)
+      bctx = sizeCanvas(boardCanvas, BOARD_W, BOARD_H);
+
+      // 홀드/프리뷰 캔버스 크기
+      const mini = 96;
+      hctx = sizeCanvas(holdCanvas, mini, mini);
+      for (const c of previewCanvases) sizeCanvas(c, mini, mini);
+
+      drawHold();
+      drawPreviews();
+    }
+
+    // (가능하면) 세로 방향 고정 시도 — iOS Safari는 홈화면(PWA)에서만 허용
+    (async () => {
+      try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('portrait'); } catch (e) {}
+    })();
+
+    window.addEventListener('resize', layout);
+    window.addEventListener('orientationchange', layout);
+
+    // ====== 유틸 ======
+    function createMatrix(rows, cols, fill) {
+      return Array.from({length: rows}, () => Array.from({length: cols}, () => fill));
+    }
+    function cloneMatrix(m) { return m.map(row => row.slice()); }
+    function rotateMatrix(m, dir) {
+      const N = m.length, r = createMatrix(N, N, 0);
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++)
+        r[y][x] = dir > 0 ? m[N - 1 - x][y] : m[x][N - 1 - y];
+      return r;
+    }
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = (Math.random() * (i + 1)) | 0;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+    function newBag() { return shuffle(['I','O','T','S','Z','J','L']); }
+
+    function getDropSpeed(level) {
+      return Math.max(1000 - (level - 1) * 100, 100);
+    }
+
+    function updateUI() {
+      scoreEl.textContent = score;
+      levelEl.textContent = level;
+      linesEl.textContent = lines;
+      speedEl.textContent = dropInterval;
+    }
+
+    // ====== 미노 ======
+    function spawnPiece() {
+      while (queue.length < 3) queue = queue.concat(newBag());
+      if (queue.length === 0) queue = newBag();
+      const type = queue.shift();
+      const def = TETROMINOES[type];
+      current = {
+        type, matrix: cloneMatrix(def.matrix), color: def.color, x: 3, y: -2
+      };
+      holdUsed = false;
+      if (collides(current, board, current.x, current.y)) gameOver = true;
+      drawPreviews();
+    }
+
+    function collides(piece, board, nx, ny, mat = piece.matrix) {
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+        if (!mat[y][x]) continue;
+        const by = ny + y, bx = nx + x;
+        if (bx < 0 || bx >= COLS || by >= ROWS) return true;
+        if (by >= 0 && board[by][bx]) return true;
+      }
+      return false;
+    }
+    function mergePiece(piece) {
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+        if (!piece.matrix[y][x]) continue;
+        const by = piece.y + y, bx = piece.x + x;
+        if (by >= 0 && by < ROWS && bx >= 0 && bx < COLS) board[by][bx] = piece.color;
+      }
+    }
+    function clearLines() {
+      let cleared = 0;
+      for (let y = ROWS - 1; y >= 0; ) {
+        if (board[y].every(cell => cell)) {
+          board.splice(y, 1);
+          board.unshift(Array.from({length: COLS}, () => null));
+          cleared++;
+        } else y--;
+      }
+      if (cleared > 0) {
+        const base = [0, 100, 300, 500, 800][cleared];
+        score += base * level;
+        lines += cleared;
+        const newLevel = 1 + Math.floor(lines / 10);
+        if (newLevel !== level) {
+          level = newLevel;
+          dropInterval = getDropSpeed(level);
+        }
+        updateUI();
+      }
+      return cleared;
+    }
+
+    function hardDrop() {
+      let dy = 0;
+      while (!collides(current, board, current.x, current.y + 1)) { current.y++; dy++; }
+      mergePiece(current);
+      clearLines();
+      spawnPiece();
+      score += (2 * dy); // 하드드롭 보너스
+      updateUI();
+    }
+    function tryMove(dx, dy) {
+      const nx = current.x + dx, ny = current.y + dy;
+      if (!collides(current, board, nx, ny)) { current.x = nx; current.y = ny; return true; }
+      return false;
+    }
+    function tryRotate(dir) {
+      const rotated = rotateMatrix(current.matrix, dir);
+      const kicks = [0, 1, -1, 2, -2];
+      for (const k of kicks) {
+        if (!collides(current, board, current.x + k, current.y, rotated)) {
+          current.matrix = rotated; current.x += k; return true;
+        }
+      }
+      return false;
+    }
+    function hold() {
+      if (holdUsed) return;
+      const curType = current.type;
+      if (!holdPiece) { holdPiece = curType; spawnPiece(); }
+      else {
+        const swapType = holdPiece; holdPiece = curType;
+        const def = TETROMINOES[swapType];
+        current = { type: swapType, matrix: cloneMatrix(def.matrix), color: def.color, x: 3, y: -2 };
+        if (collides(current, board, current.x, current.y)) gameOver = true;
+      }
+      holdUsed = true; drawHold(); drawPreviews();
+    }
+
+    // ====== 렌더링 ======
+    function drawBoard() {
+      bctx.clearRect(0,0,BOARD_W,BOARD_H);
+      // 격자
+      bctx.fillStyle = '#0b1026';
+      bctx.fillRect(0,0,BOARD_W,BOARD_H);
+      bctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      for (let x = 0; x <= COLS; x++) { bctx.beginPath(); bctx.moveTo(x*BLOCK,0); bctx.lineTo(x*BLOCK,BOARD_H); bctx.stroke(); }
+      for (let y = 0; y <= ROWS; y++) { bctx.beginPath(); bctx.moveTo(0,y*BLOCK); bctx.lineTo(BOARD_W,y*BLOCK); bctx.stroke(); }
+
+      // 고정 블록
+      for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+        const cell = board[y][x]; if (cell) drawCell(bctx, x, y, cell);
+      }
+
+      // 고스트
+      const ghostY = getGhostY();
+      if (ghostY !== null) {
+        bctx.globalAlpha = 0.25;
+        for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+          if (!current.matrix[y][x]) continue;
+          const gx = current.x + x, gy = ghostY + y;
+          if (gy >= 0) drawCell(bctx, gx, gy, current.color);
+        }
+        bctx.globalAlpha = 1.0;
+      }
+
+      // 현재 미노
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+        if (!current.matrix[y][x]) continue;
+        const bx = current.x + x, by = current.y + y;
+        if (by >= 0) drawCell(bctx, bx, by, current.color);
+      }
+
+      if (gameOver || paused) {
+        bctx.fillStyle = 'rgba(15,19,32,.75)';
+        bctx.fillRect(0,0,BOARD_W,BOARD_H);
+        bctx.fillStyle = '#c9d1ff';
+        bctx.textAlign = 'center'; bctx.textBaseline = 'middle'; bctx.font = 'bold 22px system-ui';
+        bctx.fillText(gameOver ? 'GAME OVER (재시작)' : 'PAUSED (재개)', BOARD_W/2, BOARD_H/2);
+      }
+    }
+    function drawCell(ctx, x, y, color) {
+      const px = x * BLOCK, py = y * BLOCK;
+      ctx.fillStyle = color; ctx.fillRect(px+1, py+1, BLOCK-2, BLOCK-2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.strokeRect(px+1, py+1, BLOCK-2, BLOCK-2);
+    }
+    function drawHold() {
+      hctx.clearRect(0,0,holdCanvas.width, holdCanvas.height);
+      const cssW = holdCanvas.clientWidth, cssH = holdCanvas.clientHeight;
+      hctx.fillStyle = '#0b1026'; hctx.fillRect(0,0,cssW, cssH);
+      if (!holdPiece) return;
+      const def = TETROMINOES[holdPiece];
+      drawMatrixPreview(hctx, def.matrix, def.color, cssW, cssH);
+    }
+    function drawPreviews() {
+      while (queue.length < 3) queue = queue.concat(newBag());
+      for (let i = 0; i < 3; i++) {
+        const c = previewCanvases[i];
+        const ctx = c.getContext('2d');
+        const cssW = c.clientWidth, cssH = c.clientHeight;
+        ctx.clearRect(0,0,c.width,c.height);
+        ctx.fillStyle = '#0b1026'; ctx.fillRect(0,0,cssW, cssH);
+        const type = queue[i]; const def = TETROMINOES[type];
+        drawMatrixPreview(ctx, def.matrix, def.color, cssW, cssH);
+      }
+    }
+    function drawMatrixPreview(ctx, matrix, color, cw, ch) {
+      let minX=4, minY=4, maxX=-1, maxY=-1;
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+        if (matrix[y][x]) { minX=Math.min(minX,x); minY=Math.min(minY,y); maxX=Math.max(maxX,x); maxY=Math.max(maxY,y); }
+      }
+      const w = (maxX - minX + 1), h = (maxY - minY + 1);
+      const cell = Math.floor(Math.min(cw/(w+1.5), ch/(h+1.5)));
+      const offsetX = Math.floor((cw - w*cell)/2), offsetY = Math.floor((ch - h*cell)/2);
+      for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+        if (!matrix[y][x]) continue;
+        const px = offsetX + (x - minX) * cell, py = offsetY + (y - minY) * cell;
+        ctx.fillStyle = color; ctx.fillRect(px+1, py+1, cell-2, cell-2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.strokeRect(px+1, py+1, cell-2, cell-2);
+      }
+    }
+    function getGhostY() {
+      let gy = current.y;
+      while (!collides(current, board, current.x, gy + 1)) gy++;
+      return gy;
+    }
+
+    // ====== 게임 루프 ======
+    let lastTime = 0;
+    function loop(ts) {
+      const dt = ts - lastTime; lastTime = ts;
+      if (!paused && !gameOver) {
+        dropAccumulator += dt;
+        if (dropAccumulator >= dropInterval) { dropAccumulator = 0; step(); }
+      }
+      drawBoard();
+      requestAnimationFrame(loop);
+    }
+    function step() {
+      if (!tryMove(0, 1)) { mergePiece(current); clearLines(); spawnPiece(); }
+    }
+    function togglePause() { if (!gameOver) paused = !paused; }
+    function restart() {
+      board = createMatrix(ROWS, COLS, null);
+      queue = []; current = null; holdPiece = null; holdUsed = false;
+      score = 0; level = 1; lines = 0;
+      dropInterval = getDropSpeed(level);
+      dropAccumulator = 0; paused = false; gameOver = false;
+      updateUI(); drawHold(); drawPreviews(); spawnPiece();
+    }
+
+    // ====== 입력: 키보드 + 터치 버튼 ======
+    window.addEventListener('keydown', (e) => {
+      if (gameOver) { if (e.key.toLowerCase() === 'r') restart(); return; }
+      switch (e.key) {
+        case 'ArrowLeft': tryMove(-1,0); break;
+        case 'ArrowRight': tryMove(1,0); break;
+        case 'ArrowDown': if (tryMove(0,1)) { score += 1; updateUI(); } break;
+        case 'ArrowUp': tryRotate(+1); break;
+        case 'z': case 'Z': tryRotate(-1); break;
+        case 'x': case 'X': tryRotate(+1); break;
+        case ' ': hardDrop(); break;
+        case 'c': case 'C': hold(); break;
+        case 'p': case 'P': togglePause(); break;
+        case 'r': case 'R': restart(); break;
+      }
+    });
+
+    // 터치 버튼: 길게 누르면 반복 동작(이동/소프트드롭)
+    function bindRepeatButton(id, action, interval = 90) {
+      const btn = document.getElementById(id);
+      let timer = null;
+      const start = (ev) => {
+        ev.preventDefault();
+        action();
+        timer = setInterval(action, interval);
+      };
+      const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+      btn.addEventListener('pointerdown', start);
+      btn.addEventListener('pointerup', stop);
+      btn.addEventListener('pointerleave', stop);
+      btn.addEventListener('pointercancel', stop);
+    }
+    function bindTapButton(id, action) {
+      const btn = document.getElementById(id);
+      btn.addEventListener('click', (ev) => { ev.preventDefault(); action(); });
+      btn.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    }
+
+    bindRepeatButton('btn-left', () => tryMove(-1,0));
+    bindRepeatButton('btn-right', () => tryMove(1,0));
+    bindTapButton('btn-rot-l', () => tryRotate(-1));
+    bindTapButton('btn-rot-r', () => tryRotate(+1));
+    bindRepeatButton('btn-soft', () => { if (tryMove(0,1)) { score += 1; updateUI(); } });
+    bindTapButton('btn-hard', () => hardDrop());
+    bindTapButton('btn-hold', () => hold());
+    bindTapButton('btn-pause', () => togglePause());
+    bindTapButton('btn-restart', () => restart());
+
+    // 페이지 숨김 시 자동 정지/복원 (배터리 절약)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) paused = true;
+    });
+
+    // ====== 초기화 ======
+    restart();
+    layout();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
+``
